@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Multiplayer Demo</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 0;
+      background-color: #222;
+      color: white;
+      overflow: hidden;
+    }
+    h1 { text-align: center; opacity: 0.5; }
+
+    /* Este será el estilo para CADA círculo de jugador
+      que creemos con JavaScript 
+    */
+    .player-circle {
+      width: 30px;
+      height: 30px;
+      position: absolute;
+      border-radius: 50%; /* Para que sea un círculo */
+      border: 2px solid #FFF;
+      /* La transición suave hace que el lag se vea menos feo */
+      transition: left 0.1s linear, top 0.1s linear; 
+    }
+  </style>
+</head>
+<body>
+
+  <h1>Multiplayer Real-Time Demo</h1>
+
+  <div id="game-container">
+    </div>
+
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    // 1. Conectarse al servidor
+    const socket = io();
+    const gameContainer = document.getElementById('game-container');
+    
+    // 2. Un objeto local para guardar los círculos (elementos del DOM)
+    let localPlayers = {};
+
+    // --- Funciones para manejar jugadores ---
+
+    // Esta función crea un círculo en la pantalla
+    function addPlayer(playerData) {
+      const circle = document.createElement('div');
+      circle.classList.add('player-circle');
+      circle.id = playerData.id; // Asignamos el ID del socket al elemento
+      circle.style.backgroundColor = playerData.color;
+      circle.style.left = playerData.x + 'px';
+      circle.style.top = playerData.y + 'px';
+      
+      gameContainer.appendChild(circle);
+      
+      // Guardamos el elemento en nuestro objeto local
+      localPlayers[playerData.id] = circle;
+    }
+
+    // Esta función elimina un círculo de la pantalla
+    function removePlayer(playerId) {
+      if (localPlayers[playerId]) {
+        localPlayers[playerId].remove(); // Elimina el elemento del DOM
+        delete localPlayers[playerId]; // Elimina la referencia del objeto
+      }
+    }
+
+
+    // --- 3. Escuchar los eventos del Servidor ---
+
+    // 3a. Al conectarnos, el servidor nos da la lista COMPLETA
+    socket.on('currentPlayers', (serverPlayers) => {
+      // 'serverPlayers' es un objeto, lo recorremos
+      Object.values(serverPlayers).forEach(player => {
+        addPlayer(player);
+      });
+    });
+
+    // 3b. Cuando un NUEVO jugador (que no somos nosotros) se une
+    socket.on('newPlayer', (playerData) => {
+      console.log('Un nuevo jugador se ha unido:', playerData.id);
+      addPlayer(playerData);
+    });
+    
+    // 3c. Cuando OTRO jugador se mueve
+    socket.on('playerMoved', (playerData) => {
+      const circle = localPlayers[playerData.id];
+      if (circle) {
+        circle.style.left = playerData.x + 'px';
+        circle.style.top = playerData.y + 'px';
+      }
+    });
+
+    // 3d. Cuando OTRO jugador se desconecta
+    socket.on('playerLeft', (playerId) => {
+      console.log('Un jugador se ha ido:', playerId);
+      removePlayer(playerId);
+    });
+
+    // --- 4. Enviar nuestros movimientos al Servidor ---
+
+    document.addEventListener('mousemove', (event) => {
+      const newPosition = {
+        x: event.clientX,
+        y: event.clientY
+      };
+      
+      // Actualizamos nuestro propio círculo local INMEDIATAMENTE
+      // (Esto se llama "Predicción del lado del cliente", da sensación de 0 lag)
+      const myCircle = localPlayers[socket.id];
+      if (myCircle) {
+        myCircle.style.left = newPosition.x + 'px';
+        myCircle.style.top = newPosition.y + 'px';
+      }
+      
+      // Enviamos la posición al servidor para que los demás nos vean
+      socket.emit('move', newPosition);
+    });
+
+  </script>
+</body>
+</html>
